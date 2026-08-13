@@ -11,6 +11,8 @@ pub struct Cli {
     paths: Vec<PathBuf>,
     ignores: Vec<PathBuf>,
     check: bool,
+    quiet: bool,
+    verbose: bool,
 }
 
 pub fn run() -> Result<(), BoxError> {
@@ -60,17 +62,42 @@ pub fn run() -> Result<(), BoxError> {
         let result = format_source(&source)?;
 
         if !result.changed {
+            if cli.verbose && !cli.quiet {
+                eprintln!("checked {}: unchanged", path.display());
+            }
+
             continue;
         }
 
         needs_formatting = true;
+        let summary = (cli.verbose && !cli.quiet).then(|| change_summary(&source, &result));
 
         if cli.check {
-            eprintln!("would format {}", path.display());
+            if !cli.quiet {
+                if cli.verbose {
+                    eprintln!(
+                        "would format {}: {}",
+                        path.display(),
+                        summary.as_deref().unwrap()
+                    );
+                } else {
+                    eprintln!("would format {}", path.display());
+                }
+            }
         } else {
             fs::write(&path, result.output)
                 .map_err(|error| FileError::new("write", &path, error))?;
-            eprintln!("formatted {}", path.display());
+            if !cli.quiet {
+                if cli.verbose {
+                    eprintln!(
+                        "formatted {}: {}",
+                        path.display(),
+                        summary.as_deref().unwrap()
+                    );
+                } else {
+                    eprintln!("formatted {}", path.display());
+                }
+            }
         }
     }
 
@@ -89,6 +116,8 @@ impl Cli {
         let mut paths = Vec::new();
         let mut ignores = Vec::new();
         let mut check = false;
+        let mut quiet = false;
+        let mut verbose = false;
         let mut options_allowed = true;
 
         let mut args = args.into_iter().skip(1);
@@ -101,6 +130,16 @@ impl Cli {
 
             if options_allowed && arg == "--check" {
                 check = true;
+                continue;
+            }
+
+            if options_allowed && (arg == "--quiet" || arg == "-q") {
+                quiet = true;
+                continue;
+            }
+
+            if options_allowed && arg == "--verbose" {
+                verbose = true;
                 continue;
             }
 
@@ -127,6 +166,8 @@ impl Cli {
             paths,
             ignores,
             check,
+            quiet,
+            verbose,
         })
     }
 }
@@ -136,7 +177,7 @@ fn print_help() {
         "cargo-spaced - Insert deterministic blank lines into Rust source code\n\n\
 Usage: cargo spaced [OPTIONS] [PATH]...\n\n\
 If no paths are supplied, the current directory is scanned recursively.\n\n\
-Options:\n    --check       Check formatting without modifying files\n    --ignore PATH Ignore a file or directory\n    -h, --help    Print this help message\n    -V, --version Print version information"
+Options:\n    --check       Check formatting without modifying files\n    -q, --quiet   Suppress informational output\n    --verbose     Report every processed Rust file\n    --ignore PATH Ignore a file or directory\n    -h, --help    Print this help message\n    -V, --version Print version information"
     );
 }
 
@@ -200,6 +241,34 @@ fn is_ignored(path: &Path, project_root: &Path, ignores: &[PathBuf]) -> bool {
     })
 }
 
+fn change_summary(source: &str, result: &crate::FormatResult) -> String {
+    let lines = result
+        .edits
+        .iter()
+        .map(|edit| {
+            source[..edit.range.start]
+                .bytes()
+                .filter(|&byte| byte == b'\n')
+                .count()
+                + 1
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let line_list = lines
+        .iter()
+        .map(usize::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let change_word = if result.edits.len() == 1 {
+        "change"
+    } else {
+        "changes"
+    };
+
+    format!("{} {change_word} on lines {line_list}", result.edits.len())
+}
+
 fn is_rust_file(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension == "rs")
 }
@@ -240,6 +309,8 @@ mod tests {
                 paths: vec![PathBuf::from("src"), PathBuf::from("file.rs")],
                 ignores: Vec::new(),
                 check: true,
+                quiet: false,
+                verbose: false,
             }
         );
     }
@@ -278,5 +349,32 @@ mod tests {
             Cli::parse_from(args).unwrap().ignores,
             vec![PathBuf::from("generated"), PathBuf::from("old.rs")]
         );
+    }
+
+    #[test]
+    fn parses_quiet_and_verbose_options() {
+        let args = ["cargo-spaced", "-q", "--verbose"]
+            .into_iter()
+            .map(OsString::from);
+
+        let cli = Cli::parse_from(args).unwrap();
+        assert!(cli.quiet);
+        assert!(cli.verbose);
+    }
+
+    #[test]
+    fn summarizes_changes_using_original_source_lines() {
+        let source = "first\nsecond\nthird\n";
+        let result = crate::FormatResult {
+            output: String::new(),
+            changed: true,
+            edits: vec![
+                crate::edit::Edit::insert(6, "\n"),
+                crate::edit::Edit::insert(6, "\n"),
+                crate::edit::Edit::insert(13, "\n"),
+            ],
+        };
+
+        assert_eq!(change_summary(source, &result), "3 changes on lines 2, 3");
     }
 }
