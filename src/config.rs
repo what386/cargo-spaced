@@ -11,7 +11,16 @@ pub struct Config {
     #[serde(default)]
     pub ignore: Vec<PathBuf>,
     #[serde(default)]
+    pub rules: Rules,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Rules {
+    #[serde(default)]
     pub match_arm_spacing: bool,
+    #[serde(default)]
+    pub normalize_blank_lines: bool,
 }
 
 impl Config {
@@ -75,7 +84,8 @@ ignore = ["generated/", "src/legacy.rs"]
             vec![PathBuf::from("generated/"), PathBuf::from("src/legacy.rs")]
         );
 
-        assert!(!config.match_arm_spacing);
+        assert!(!config.rules.match_arm_spacing);
+        assert!(!config.rules.normalize_blank_lines);
     }
 
     #[test]
@@ -86,7 +96,10 @@ ignore = ["generated/", "src/legacy.rs"]
 
     #[test]
     fn deserializes_match_arm_spacing() {
-        let config: Config = toml::from_str("match_arm_spacing = true").unwrap();
-        assert!(config.match_arm_spacing);
+        let config: Config =
+            toml::from_str("[rules]\nmatch_arm_spacing = true\nnormalize_blank_lines = true")
+                .unwrap();
+        assert!(config.rules.match_arm_spacing);
+        assert!(config.rules.normalize_blank_lines);
     }
 }

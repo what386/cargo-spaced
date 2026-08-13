@@ -109,14 +109,31 @@ mod tests {
         assert_eq!(format(source), source);
 
         let config = Config {
-            match_arm_spacing: true,
+            rules: crate::config::Rules {
+                match_arm_spacing: true,
+                ..crate::config::Rules::default()
+            },
             ..Config::default()
         };
 
         let expected = "fn main(value: Value) {\n    match value {\n        Value::A => {\n            first();\n        }\n\n        Value::B => second(),\n\n        Value::C => {\n            third();\n        }\n    }\n}\n";
-        assert_eq!(
-            format_source(source, &config).unwrap().output,
-            expected
-        );
+        assert_eq!(format_source(source, &config).unwrap().output, expected);
+    }
+
+    #[test]
+    fn normalizes_excess_blank_lines_only_at_required_boundaries() {
+        let source =
+            "fn first() {}\n\n\nfn second() {}\n\n\nconst VALUE: usize = 1;\n\n\nfn third() {}\n";
+        let config = Config {
+            rules: crate::config::Rules {
+                normalize_blank_lines: true,
+                ..crate::config::Rules::default()
+            },
+            ..Config::default()
+        };
+        let expected =
+            "fn first() {}\n\nfn second() {}\n\nconst VALUE: usize = 1;\n\nfn third() {}\n";
+
+        assert_eq!(format_source(source, &config).unwrap().output, expected);
     }
 }

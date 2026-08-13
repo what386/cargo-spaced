@@ -2,11 +2,7 @@ use crate::config::Config;
 use crate::edit::Edit;
 use crate::syntax::{Boundary, ContainerKind, NodeKind};
 
-pub fn edits_for_boundaries(
-    source: &str,
-    boundaries: &[Boundary],
-    config: &Config,
-) -> Vec<Edit> {
+pub fn edits_for_boundaries(source: &str, boundaries: &[Boundary], config: &Config) -> Vec<Edit> {
     boundaries
         .iter()
         .filter_map(|boundary| edit_for_boundary(source, boundary, config))
@@ -32,15 +28,20 @@ fn edit_for_boundary(source: &str, boundary: &Boundary, config: &Config) -> Opti
 
     let existing = blank_lines_in(&source[boundary.range.clone()]);
 
-    if existing >= required {
+    if existing == required || existing > required && !config.rules.normalize_blank_lines {
         return None;
     }
 
-    // V1 is insertion-only. We don't normalize existing whitespace.
-    //
-    // This assumes `boundary.range` ends immediately before the next
-    // node's attached leading trivia. The parser/trivia layer should make
-    // that invariant true.
+    if config.rules.normalize_blank_lines && existing > required {
+        return Some(Edit::replace(
+            boundary.range.clone(),
+            newline_for(source).repeat(required + 1),
+        ));
+    }
+
+    // This assumes `boundary.range` ends immediately before the next node's
+    // attached leading trivia. The parser/trivia layer should make that
+    // invariant true.
     Some(Edit::insert(boundary.insertion_offset, newline_for(source)))
 }
 
@@ -79,7 +80,7 @@ fn rule_multiline_macro_statement(boundary: &Boundary) -> usize {
 }
 
 fn rule_match_arm_boundary(boundary: &Boundary, config: &Config) -> usize {
-    if config.match_arm_spacing
+    if config.rules.match_arm_spacing
         && boundary.parent_kind == ContainerKind::MatchArms
         && (boundary.previous.multiline || boundary.next.multiline)
     {
