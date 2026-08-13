@@ -260,8 +260,19 @@ fn rule_match_arm_boundary(boundary: &Boundary, config: &Config) -> usize {
 }
 
 fn rule_module_boundary(boundary: &Boundary) -> usize {
+    let previous_is_module = matches!(
+        boundary.previous.kind,
+        NodeKind::OutOfLineModule | NodeKind::InlineModule
+    );
+    let next_is_module = matches!(
+        boundary.next.kind,
+        NodeKind::OutOfLineModule | NodeKind::InlineModule
+    );
+
     if boundary.parent_kind == ContainerKind::Items
-        && (boundary.previous.kind == NodeKind::Module || boundary.next.kind == NodeKind::Module)
+        && (previous_is_module || next_is_module)
+        && !(boundary.previous.kind == NodeKind::OutOfLineModule
+            && boundary.next.kind == NodeKind::OutOfLineModule)
     {
         1
     } else {

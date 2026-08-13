@@ -108,6 +108,23 @@ mod tests {
     }
 
     #[test]
+    fn keeps_consecutive_out_of_line_modules_together() {
+        let source = "pub mod first;\npub mod second;\nfn main() {}\n";
+        let expected = "pub mod first;\npub mod second;\n\nfn main() {}\n";
+
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
+    fn separates_out_of_line_and_inline_modules() {
+        let source = "pub mod first;\npub mod second {\n    pub fn run() {}\n}\npub mod third;\n";
+        let expected =
+            "pub mod first;\n\npub mod second {\n    pub fn run() {}\n}\n\npub mod third;\n";
+
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
     fn normalizes_comment_blocks() {
         let source = "// first\n\n// second\n\nfn main() {}\n";
         let expected = "// first\n// second\nfn main() {}\n";
