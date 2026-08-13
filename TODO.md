@@ -9,6 +9,10 @@
 - [ ] feat: multithreaded file check/edits
       @created 2026-08-13 17:41
 
-- [ ] initial release
+
+## Completed
+
+- [x] initial release
       @created 2026-08-13 18:38
+      @completed 2026-08-13 18:38
 
