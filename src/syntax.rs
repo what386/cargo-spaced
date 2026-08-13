@@ -20,6 +20,7 @@ pub enum NodeKind {
     MultilineDeclaration,
     MultilineMacroStatement,
     MatchArm,
+    Module,
     Other,
 }
 
@@ -203,7 +204,9 @@ impl<'a> Collector<'a> {
 
     fn item_node(&self, item: &ast::Item) -> NodeInfo {
         let syntax = item.syntax();
-        let kind = if is_multiline_declaration(syntax) {
+        let kind = if ast::Module::can_cast(syntax.kind()) {
+            NodeKind::Module
+        } else if is_multiline_declaration(syntax) {
             NodeKind::MultilineDeclaration
         } else if item_is_block_bodied(item) {
             NodeKind::BlockBodiedItem

@@ -9,15 +9,6 @@
 - [ ] feat: multithreaded file check/edits
       @created 2026-08-13 17:41
 
-- [ ] rule: nested modules
-      @created 2026-08-13 20:35
-
-- [ ] rule: comment blocks
-      @created 2026-08-13 20:35
-
-- [ ] rule: file boundaries
-      @created 2026-08-13 20:36
-
 
 ## Completed
 
@@ -28,4 +19,16 @@
 - [x] rule: opt-in match arm spacing
       @created 2026-08-13 20:33
       @completed 2026-08-13 20:34
+
+- [x] rule: nested modules
+      @created 2026-08-13 20:35
+      @completed 2026-08-13 20:38
+
+- [x] rule: comment blocks
+      @created 2026-08-13 20:35
+      @completed 2026-08-13 20:38
+
+- [x] rule: file boundaries
+      @created 2026-08-13 20:36
+      @completed 2026-08-13 20:38
 

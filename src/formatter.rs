@@ -12,7 +12,8 @@ pub struct FormatResult {
 
 pub fn format_source(source: &str, config: &Config) -> Result<FormatResult, BoxError> {
     let boundaries = syntax::collect_boundaries(source)?;
-    let edits = rules::edits_for_boundaries(source, &boundaries, config);
+    let mut edits = rules::edits_for_boundaries(source, &boundaries, config);
+    edits.extend(rules::edits_for_file_boundaries(source, config));
 
     let output = apply_edits(source, &edits)?;
     let changed = output != source;
@@ -94,6 +95,30 @@ mod tests {
     fn normalizes_excess_blank_lines_by_default() {
         let source = "fn first() {}\n\n\nfn second() {}\n";
         let expected = "fn first() {}\n\nfn second() {}\n";
+
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
+    fn spaces_module_items() {
+        let source = "mod outer {\n    const BEFORE: usize = 1;\n    mod nested;\n    const AFTER: usize = 2;\n}\n";
+        let expected = "mod outer {\n    const BEFORE: usize = 1;\n\n    mod nested;\n\n    const AFTER: usize = 2;\n}\n";
+
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
+    fn normalizes_comment_blocks() {
+        let source = "// first\n\n// second\n\nfn main() {}\n";
+        let expected = "// first\n// second\nfn main() {}\n";
+
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
+    fn normalizes_file_boundaries() {
+        let source = "\n\nfn main() {}\n\n\n";
+        let expected = "fn main() {}\n";
 
         assert_eq!(format(source), expected);
     }

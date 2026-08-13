@@ -9,6 +9,54 @@ pub fn edits_for_boundaries(source: &str, boundaries: &[Boundary], config: &Conf
         .collect()
 }
 
+pub fn edits_for_file_boundaries(source: &str, config: &Config) -> Vec<Edit> {
+    if !config.rules.normalize_blank_lines || source.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let mut edits = Vec::new();
+    let first_content = source
+        .split_inclusive('\n')
+        .scan(0, |offset, line| {
+            let start = *offset;
+            *offset += line.len();
+            Some((start, line))
+        })
+        .find(|(_, line)| !line.trim().is_empty())
+        .map(|(start, _)| start)
+        .unwrap_or(source.len());
+
+    if first_content > 0 {
+        edits.push(Edit::replace(0..first_content, ""));
+    }
+
+    if let Some(edit) = normalize_comment_trivia(source, first_content, source.len()) {
+        edits.push(edit);
+    }
+
+    let last_content_end = source
+        .split_inclusive('\n')
+        .scan(0, |offset, line| {
+            let start = *offset;
+            *offset += line.len();
+            Some((start, line))
+        })
+        .filter(|(_, line)| !line.trim().is_empty())
+        .last()
+        .map(|(start, line)| start + line.trim_end_matches(['\r', '\n']).len())
+        .unwrap_or(0);
+
+    let trailing = &source[last_content_end..];
+    if trailing != newline_for(source) {
+        edits.push(Edit::replace(
+            last_content_end..source.len(),
+            newline_for(source),
+        ));
+    }
+
+    edits
+}
+
 fn edit_for_boundary(source: &str, boundary: &Boundary, config: &Config) -> Vec<Edit> {
     // A boundary adjacent to a skipped node is still outside that node and
     // may need spacing. Boundaries wholly inside skipped syntax have both
@@ -40,7 +88,13 @@ fn edit_for_boundary(source: &str, boundary: &Boundary, config: &Config) -> Vec<
     }
 
     if config.rules.normalize_blank_lines
-        && let Some(edit) = normalize_attached_trivia(source, boundary)
+        && let Some(edit) = normalize_comment_trivia(
+            source,
+            source[..boundary.next.range.start]
+                .rfind('\n')
+                .map_or(0, |offset| offset + 1),
+            boundary.next.range.end,
+        )
     {
         edits.push(edit);
     }
@@ -99,28 +153,24 @@ fn normalize_boundary(source: &str, boundary: &Boundary, required: usize) -> Opt
     ))
 }
 
-fn normalize_attached_trivia(source: &str, boundary: &Boundary) -> Option<Edit> {
-    let start = source[..boundary.next.range.start]
-        .rfind('\n')
-        .map_or(0, |offset| offset + 1);
-    let mut last_trivia_end = None;
+fn normalize_comment_trivia(source: &str, start: usize, end: usize) -> Option<Edit> {
     let mut saw_attached_trivia = false;
-    let mut saw_blank_line = false;
+    let mut first_blank_start = None;
 
     let mut line_start = start;
 
-    while line_start < boundary.next.range.end {
-        let line_end = source[line_start..boundary.next.range.end]
+    while line_start < end {
+        let line_end = source[line_start..end]
             .find('\n')
-            .map_or(boundary.next.range.end, |offset| line_start + offset);
-        let next_line_start = (line_end < boundary.next.range.end).then_some(line_end + 1);
+            .map_or(end, |offset| line_start + offset);
+        let next_line_start = (line_end < end).then_some(line_end + 1);
         let line = &source[line_start..next_line_start.unwrap_or(line_end)];
         let content = line.trim_end_matches(['\r', '\n']);
         let trimmed = content.trim();
 
         if trimmed.is_empty() {
             if saw_attached_trivia {
-                saw_blank_line = true;
+                first_blank_start.get_or_insert(line_start);
             }
             line_start = next_line_start.unwrap_or(line_end);
             continue;
@@ -128,24 +178,39 @@ fn normalize_attached_trivia(source: &str, boundary: &Boundary) -> Option<Edit> 
 
         if trimmed.starts_with("//") || trimmed.starts_with('#') {
             saw_attached_trivia = true;
-            last_trivia_end = Some(line_start + line.len());
             line_start = next_line_start.unwrap_or(line_end);
             continue;
         }
 
-        if !saw_blank_line {
-            return None;
-        }
-
+        first_blank_start?;
         let token_start = line_start + content.len() - content.trim_start().len();
-        let range = last_trivia_end?..token_start;
-        return Some(Edit::replace(
-            range,
-            source[line_start..token_start].to_owned(),
-        ));
+        let range = first_blank_start?..token_start;
+        let replacement = remove_blank_lines(&source[range.clone()])?;
+        return Some(Edit::replace(range, replacement));
     }
 
     None
+}
+
+fn remove_blank_lines(text: &str) -> Option<String> {
+    let mut changed = false;
+    let mut replacement = String::with_capacity(text.len());
+
+    for line in text.split_inclusive('\n') {
+        let is_blank_line = line.ends_with('\n')
+            && line[..line.len() - 1]
+                .trim_end_matches('\r')
+                .trim()
+                .is_empty();
+
+        if is_blank_line {
+            changed = true;
+        } else {
+            replacement.push_str(line);
+        }
+    }
+
+    changed.then_some(replacement)
 }
 
 fn required_blank_lines(boundary: &Boundary, config: &Config) -> usize {
@@ -156,6 +221,7 @@ fn required_blank_lines(boundary: &Boundary, config: &Config) -> usize {
         rule_multiline_declaration(boundary),
         rule_multiline_macro_statement(boundary),
         rule_match_arm_boundary(boundary, config),
+        rule_module_boundary(boundary),
     ]
     .into_iter()
     .max()
@@ -186,6 +252,16 @@ fn rule_match_arm_boundary(boundary: &Boundary, config: &Config) -> usize {
     if config.rules.match_arm_spacing
         && boundary.parent_kind == ContainerKind::MatchArms
         && (boundary.previous.multiline || boundary.next.multiline)
+    {
+        1
+    } else {
+        0
+    }
+}
+
+fn rule_module_boundary(boundary: &Boundary) -> usize {
+    if boundary.parent_kind == ContainerKind::Items
+        && (boundary.previous.kind == NodeKind::Module || boundary.next.kind == NodeKind::Module)
     {
         1
     } else {
