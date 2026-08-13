@@ -77,9 +77,25 @@ mod tests {
     }
 
     #[test]
-    fn preserves_existing_blank_lines_and_crlf() {
+    fn preserves_existing_blank_lines_and_crlf_when_disabled() {
         let source = "fn first() {}\r\n\r\n\r\nfn second() {}\r\n";
-        assert_eq!(format(source), source);
+        let config = Config {
+            rules: crate::config::Rules {
+                normalize_blank_lines: false,
+                ..crate::config::Rules::default()
+            },
+            ..Config::default()
+        };
+
+        assert_eq!(format_source(source, &config).unwrap().output, source);
+    }
+
+    #[test]
+    fn normalizes_excess_blank_lines_by_default() {
+        let source = "fn first() {}\n\n\nfn second() {}\n";
+        let expected = "fn first() {}\n\nfn second() {}\n";
+
+        assert_eq!(format(source), expected);
     }
 
     #[test]

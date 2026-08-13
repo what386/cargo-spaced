@@ -14,13 +14,26 @@ pub struct Config {
     pub rules: Rules,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Rules {
     #[serde(default)]
     pub match_arm_spacing: bool,
-    #[serde(default)]
+    #[serde(default = "default_normalize_blank_lines")]
     pub normalize_blank_lines: bool,
+}
+
+impl Default for Rules {
+    fn default() -> Self {
+        Self {
+            match_arm_spacing: false,
+            normalize_blank_lines: true,
+        }
+    }
+}
+
+fn default_normalize_blank_lines() -> bool {
+    true
 }
 
 impl Config {
@@ -85,7 +98,7 @@ ignore = ["generated/", "src/legacy.rs"]
         );
 
         assert!(!config.rules.match_arm_spacing);
-        assert!(!config.rules.normalize_blank_lines);
+        assert!(config.rules.normalize_blank_lines);
     }
 
     #[test]
