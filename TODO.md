@@ -12,6 +12,9 @@
 - [ ] rule: nested modules
       @created 2026-08-13 20:35
 
+- [ ] rule: comment blocks
+      @created 2026-08-13 20:35
+
 
 ## Completed
 
