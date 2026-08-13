@@ -13,3 +13,7 @@ exclude = [
     ".github",
     "scripts/",
 ]
+
+[dependencies]
+ra_ap_syntax = "0.0.347"
+walkdir = "2.5"
