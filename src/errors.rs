@@ -135,6 +135,48 @@ impl fmt::Display for CliError {
 
 impl StdError for CliError {}
 
+#[derive(Debug)]
+pub struct ConfigError {
+    pub path: PathBuf,
+    pub message: String,
+    pub source: Option<io::Error>,
+}
+
+impl ConfigError {
+    pub fn read(path: PathBuf, source: io::Error) -> Self {
+        Self {
+            path,
+            message: "failed to read configuration".to_owned(),
+            source: Some(source),
+        }
+    }
+
+    pub fn parse(path: PathBuf, message: String) -> Self {
+        Self {
+            path,
+            message,
+            source: None,
+        }
+    }
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.message, self.path.display())?;
+        if let Some(source) = &self.source {
+            write!(f, ": {source}")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl StdError for ConfigError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.source.as_ref().map(|source| source as &dyn StdError)
+    }
+}
+
 pub fn missing_path(path: &Path) -> CliError {
     CliError::new(format!("path does not exist: {}", path.display()))
 }

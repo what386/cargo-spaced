@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::errors::{BoxError, CliError, FileError, WalkError, missing_path};
 use crate::format_source;
 use std::ffi::OsString;
@@ -8,6 +9,7 @@ use walkdir::WalkDir;
 #[derive(Debug, PartialEq, Eq)]
 pub struct Cli {
     paths: Vec<PathBuf>,
+    ignores: Vec<PathBuf>,
     check: bool,
 }
 
@@ -38,6 +40,11 @@ pub fn run() -> Result<(), BoxError> {
     }
 
     let cli = Cli::parse_from(args)?;
+    let (config, project_root) =
+        Config::load(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))?;
+
+    let mut ignores = config.ignore;
+    ignores.extend(cli.ignores);
     let paths = if cli.paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
@@ -46,7 +53,7 @@ pub fn run() -> Result<(), BoxError> {
 
     let mut needs_formatting = false;
 
-    for path in rust_files(&paths)? {
+    for path in rust_files(&paths, &project_root, &ignores)? {
         let source =
             fs::read_to_string(&path).map_err(|error| FileError::new("read", &path, error))?;
 
@@ -80,10 +87,13 @@ impl Cli {
         I: IntoIterator<Item = OsString>,
     {
         let mut paths = Vec::new();
+        let mut ignores = Vec::new();
         let mut check = false;
         let mut options_allowed = true;
 
-        for arg in args.into_iter().skip(1) {
+        let mut args = args.into_iter().skip(1);
+
+        while let Some(arg) = args.next() {
             if options_allowed && arg == "--" {
                 options_allowed = false;
                 continue;
@@ -91,6 +101,15 @@ impl Cli {
 
             if options_allowed && arg == "--check" {
                 check = true;
+                continue;
+            }
+
+            if options_allowed && arg == "--ignore" {
+                let Some(ignore) = args.next() else {
+                    return Err(CliError::new("--ignore requires a path"));
+                };
+
+                ignores.push(PathBuf::from(ignore));
                 continue;
             }
 
@@ -104,7 +123,11 @@ impl Cli {
             paths.push(PathBuf::from(arg));
         }
 
-        Ok(Self { paths, check })
+        Ok(Self {
+            paths,
+            ignores,
+            check,
+        })
     }
 }
 
@@ -113,16 +136,20 @@ fn print_help() {
         "cargo-spaced - Insert deterministic blank lines into Rust source code\n\n\
 Usage: cargo spaced [OPTIONS] [PATH]...\n\n\
 If no paths are supplied, the current directory is scanned recursively.\n\n\
-Options:\n    --check       Check formatting without modifying files\n    -h, --help    Print this help message\n    -V, --version Print version information"
+Options:\n    --check       Check formatting without modifying files\n    --ignore PATH Ignore a file or directory\n    -h, --help    Print this help message\n    -V, --version Print version information"
     );
 }
 
-fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, BoxError> {
+fn rust_files(
+    paths: &[PathBuf],
+    project_root: &Path,
+    ignores: &[PathBuf],
+) -> Result<Vec<PathBuf>, BoxError> {
     let mut files = Vec::new();
 
     for path in paths {
         if path.is_file() {
-            if is_rust_file(path) {
+            if is_rust_file(path) && !is_ignored(path, project_root, ignores) {
                 files.push(path.clone());
             }
 
@@ -133,13 +160,15 @@ fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, BoxError> {
             return Err(missing_path(path).into());
         }
 
-        for entry in WalkDir::new(path)
-            .into_iter()
-            .filter_entry(|entry| !should_skip(entry.path()))
-        {
+        for entry in WalkDir::new(path).into_iter().filter_entry(|entry| {
+            !should_skip(entry.path()) && !is_ignored(entry.path(), project_root, ignores)
+        }) {
             let entry = entry.map_err(|error| WalkError::new(path, error))?;
 
-            if entry.file_type().is_file() && is_rust_file(entry.path()) {
+            if entry.file_type().is_file()
+                && is_rust_file(entry.path())
+                && !is_ignored(entry.path(), project_root, ignores)
+            {
                 files.push(entry.into_path());
             }
         }
@@ -149,6 +178,26 @@ fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, BoxError> {
     files.dedup();
 
     Ok(files)
+}
+
+fn is_ignored(path: &Path, project_root: &Path, ignores: &[PathBuf]) -> bool {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    };
+
+    ignores.iter().any(|ignore| {
+        let ignored = if ignore.is_absolute() {
+            ignore.clone()
+        } else {
+            project_root.join(ignore)
+        };
+
+        absolute == ignored || absolute.starts_with(&ignored)
+    })
 }
 
 fn is_rust_file(path: &Path) -> bool {
@@ -189,6 +238,7 @@ mod tests {
             Cli::parse_from(args).unwrap(),
             Cli {
                 paths: vec![PathBuf::from("src"), PathBuf::from("file.rs")],
+                ignores: Vec::new(),
                 check: true,
             }
         );
@@ -210,5 +260,23 @@ mod tests {
             .map(OsString::from);
 
         assert!(Cli::parse_from(args).is_err());
+    }
+
+    #[test]
+    fn parses_repeated_ignore_options() {
+        let args = [
+            "cargo-spaced",
+            "--ignore",
+            "generated",
+            "--ignore",
+            "old.rs",
+        ]
+        .into_iter()
+        .map(OsString::from);
+
+        assert_eq!(
+            Cli::parse_from(args).unwrap().ignores,
+            vec![PathBuf::from("generated"), PathBuf::from("old.rs")]
+        );
     }
 }
