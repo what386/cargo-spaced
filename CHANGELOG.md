@@ -2,6 +2,13 @@
 
 *Generated on 2026-08-13*
 
+## 0.2.1 — 2026-08-13
+
+### Changes
+
+- fix: mod declarations space better
+
+
 ## 0.2.0 — 2026-08-13
 
 ### Changes
