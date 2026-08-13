@@ -125,6 +125,7 @@ fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, BoxError> {
             if is_rust_file(path) {
                 files.push(path.clone());
             }
+
             continue;
         }
 
@@ -198,6 +199,7 @@ mod tests {
         let args = ["cargo-spaced", "--", "--literal.rs"]
             .into_iter()
             .map(OsString::from);
+
         assert_eq!(
             Cli::parse_from(args).unwrap().paths,
             vec![PathBuf::from("--literal.rs")]
@@ -206,6 +208,7 @@ mod tests {
         let args = ["cargo-spaced", "--unknown"]
             .into_iter()
             .map(OsString::from);
+
         assert!(Cli::parse_from(args).is_err());
     }
 }

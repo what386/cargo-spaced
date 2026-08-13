@@ -18,6 +18,7 @@ fn edit_for_boundary(source: &str, boundary: &Boundary) -> Option<Edit> {
     {
         return None;
     }
+
     let required = required_blank_lines(boundary);
 
     if required == 0 {
