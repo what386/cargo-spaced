@@ -1,22 +1,13 @@
 use crate::format_source;
-use anyhow::{Context, Result};
-use clap::Parser;
+use anyhow::{Context, Result, bail};
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-#[derive(Debug, Parser)]
-#[command(name = "cargo-spaced")]
-#[command(about = "Insert deterministic blank lines into Rust source code")]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Cli {
-    /// Files or directories to format.
-    ///
-    /// If omitted, the current directory is scanned recursively.
-    #[arg(value_name = "PATH")]
     paths: Vec<PathBuf>,
-
-    /// Check whether files need formatting without modifying them.
-    #[arg(long)]
     check: bool,
 }
 
@@ -29,15 +20,24 @@ pub fn run() -> Result<()> {
     //
     //     cargo-spaced spaced ...
     //
-    // Clap would otherwise interpret "spaced" as a positional path.
-    let args = std::env::args_os();
-    let mut args: Vec<_> = args.collect();
+    // The parser would otherwise interpret "spaced" as a positional path.
+    let mut args: Vec<_> = std::env::args_os().collect();
 
     if args.get(1).is_some_and(|arg| arg == "spaced") {
         args.remove(1);
     }
 
-    let cli = Cli::parse_from(args);
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        print_help();
+        return Ok(());
+    }
+
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("cargo-spaced {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    let cli = Cli::parse_from(args)?;
     let paths = if cli.paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
@@ -74,6 +74,46 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
+impl Cli {
+    fn parse_from<I>(args: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = OsString>,
+    {
+        let mut paths = Vec::new();
+        let mut check = false;
+        let mut options_allowed = true;
+
+        for arg in args.into_iter().skip(1) {
+            if options_allowed && arg == "--" {
+                options_allowed = false;
+                continue;
+            }
+
+            if options_allowed && arg == "--check" {
+                check = true;
+                continue;
+            }
+
+            if options_allowed && arg.to_str().is_some_and(|arg| arg.starts_with('-')) {
+                bail!("unexpected argument: {}", arg.to_string_lossy());
+            }
+
+            paths.push(PathBuf::from(arg));
+        }
+
+        Ok(Self { paths, check })
+    }
+}
+
+fn print_help() {
+    println!(
+        "cargo-spaced - Insert deterministic blank lines into Rust source code\n\n\
+Usage: cargo spaced [OPTIONS] [PATH]...\n\n\
+If no paths are supplied, the current directory is scanned recursively.\n\n\
+Options:\n    --check       Check formatting without modifying files\n    -h, --help    Print this help message\n    -V, --version Print version information"
+    );
+}
+
 fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -93,9 +133,8 @@ fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
             .into_iter()
             .filter_entry(|entry| !should_skip(entry.path()))
         {
-            let entry = entry.with_context(|| {
-                format!("failed while walking {}", path.display())
-            })?;
+            let entry =
+                entry.with_context(|| format!("failed while walking {}", path.display()))?;
 
             if entry.file_type().is_file() && is_rust_file(entry.path()) {
                 files.push(entry.into_path());
@@ -135,5 +174,36 @@ mod tests {
         assert!(should_skip(Path::new("target")));
         assert!(should_skip(Path::new(".git")));
         assert!(!should_skip(Path::new("src")));
+    }
+
+    #[test]
+    fn parses_check_and_paths() {
+        let args = ["cargo-spaced", "--check", "src", "file.rs"]
+            .into_iter()
+            .map(OsString::from);
+
+        assert_eq!(
+            Cli::parse_from(args).unwrap(),
+            Cli {
+                paths: vec![PathBuf::from("src"), PathBuf::from("file.rs")],
+                check: true,
+            }
+        );
+    }
+
+    #[test]
+    fn supports_option_terminator_and_rejects_unknown_options() {
+        let args = ["cargo-spaced", "--", "--literal.rs"]
+            .into_iter()
+            .map(OsString::from);
+        assert_eq!(
+            Cli::parse_from(args).unwrap().paths,
+            vec![PathBuf::from("--literal.rs")]
+        );
+
+        let args = ["cargo-spaced", "--unknown"]
+            .into_iter()
+            .map(OsString::from);
+        assert!(Cli::parse_from(args).is_err());
     }
 }

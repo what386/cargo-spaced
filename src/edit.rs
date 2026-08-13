@@ -50,9 +50,7 @@ fn validate_edits(source: &str, edits: &[Edit]) -> Result<()> {
             bail!("edit range is outside source bounds: {:?}", edit.range);
         }
 
-        if !source.is_char_boundary(edit.range.start)
-            || !source.is_char_boundary(edit.range.end)
-        {
+        if !source.is_char_boundary(edit.range.start) || !source.is_char_boundary(edit.range.end) {
             bail!("edit range is not on UTF-8 character boundaries");
         }
 
@@ -73,10 +71,7 @@ mod tests {
     #[test]
     fn applies_insertions_in_source_order() {
         let source = "ab";
-        let edits = vec![
-            Edit::insert(1, "X"),
-            Edit::insert(2, "Y"),
-        ];
+        let edits = vec![Edit::insert(1, "X"), Edit::insert(2, "Y")];
 
         assert_eq!(apply_edits(source, &edits).unwrap(), "aXbY");
     }
@@ -92,10 +87,7 @@ mod tests {
     #[test]
     fn rejects_overlapping_edits() {
         let source = "abcdef";
-        let edits = vec![
-            Edit::replace(1..4, "x"),
-            Edit::replace(3..5, "y"),
-        ];
+        let edits = vec![Edit::replace(1..4, "x"), Edit::replace(3..5, "y")];
 
         assert!(apply_edits(source, &edits).is_err());
     }

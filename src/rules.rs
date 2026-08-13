@@ -9,6 +9,9 @@ pub fn edits_for_boundaries(source: &str, boundaries: &[Boundary]) -> Vec<Edit> 
 }
 
 fn edit_for_boundary(source: &str, boundary: &Boundary) -> Option<Edit> {
+    if boundary.previous.skipped || boundary.next.skipped {
+        return None;
+    }
     let required = required_blank_lines(boundary);
 
     if required == 0 {
@@ -26,7 +29,7 @@ fn edit_for_boundary(source: &str, boundary: &Boundary) -> Option<Edit> {
     // This assumes `boundary.range` ends immediately before the next
     // node's attached leading trivia. The parser/trivia layer should make
     // that invariant true.
-    Some(Edit::insert(boundary.range.end, "\n"))
+    Some(Edit::insert(boundary.insertion_offset, newline_for(source)))
 }
 
 fn required_blank_lines(boundary: &Boundary) -> usize {
@@ -90,8 +93,18 @@ fn rule_multiline_block_statement(boundary: &Boundary) -> usize {
 /// handling is implemented, the boundary range should contain only the
 /// whitespace that is actually eligible for replacement/insertion.
 fn blank_lines_in(text: &str) -> usize {
-    let newline_count = text.bytes().filter(|&byte| byte == b'\n').count();
-    newline_count.saturating_sub(1)
+    text.lines()
+        .filter(|line| line.trim().is_empty())
+        .count()
+        .saturating_sub(1)
+}
+
+fn newline_for(source: &str) -> &'static str {
+    if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
 }
 
 #[cfg(test)]
