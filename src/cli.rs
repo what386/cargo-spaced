@@ -62,8 +62,12 @@ pub fn run() -> Result<(), BoxError> {
         let result = format_source(&source)?;
 
         if !result.changed {
-            if cli.verbose && !cli.quiet {
-                eprintln!("checked {}: unchanged", path.display());
+            if !cli.quiet {
+                if cli.verbose {
+                    eprintln!("checked {}: unchanged", path.display());
+                } else {
+                    eprintln!("checked {}", path.display());
+                }
             }
 
             continue;
