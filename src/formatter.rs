@@ -124,6 +124,7 @@ mod tests {
     fn normalizes_excess_blank_lines_only_at_required_boundaries() {
         let source =
             "fn first() {}\n\n\nfn second() {}\n\n\nconst VALUE: usize = 1;\n\n\nfn third() {}\n";
+
         let config = Config {
             rules: crate::config::Rules {
                 normalize_blank_lines: true,
@@ -131,8 +132,89 @@ mod tests {
             },
             ..Config::default()
         };
+
         let expected =
             "fn first() {}\n\nfn second() {}\n\nconst VALUE: usize = 1;\n\nfn third() {}\n";
+
+        assert_eq!(format_source(source, &config).unwrap().output, expected);
+    }
+
+    #[test]
+    fn normalization_preserves_leading_doc_comments() {
+        let source = "fn first() {}\n\n\n/// a comment\nfn something_else() {}\n";
+        let config = Config {
+            rules: crate::config::Rules {
+                normalize_blank_lines: true,
+                ..crate::config::Rules::default()
+            },
+            ..Config::default()
+        };
+
+        let expected = "fn first() {}\n\n/// a comment\nfn something_else() {}\n";
+
+        assert_eq!(format_source(source, &config).unwrap().output, expected);
+    }
+
+    #[test]
+    fn normalizes_excess_blank_lines_with_crlf() {
+        let source = "fn first() {}\r\n\r\n\r\nfn second() {}\r\n";
+        let config = Config {
+            rules: crate::config::Rules {
+                normalize_blank_lines: true,
+                ..crate::config::Rules::default()
+            },
+            ..Config::default()
+        };
+
+        let expected = "fn first() {}\r\n\r\nfn second() {}\r\n";
+
+        assert_eq!(format_source(source, &config).unwrap().output, expected);
+    }
+
+    #[test]
+    fn normalization_preserves_indentation_before_attached_comments() {
+        let source = "fn main() {\n    let value = thing\n        .foo();\n\n\n\n    // Keep this comment attached.\n    consume(value);\n}\n";
+        let config = Config {
+            rules: crate::config::Rules {
+                normalize_blank_lines: true,
+                ..crate::config::Rules::default()
+            },
+            ..Config::default()
+        };
+
+        let expected = "fn main() {\n    let value = thing\n        .foo();\n\n    // Keep this comment attached.\n    consume(value);\n}\n";
+
+        assert_eq!(format_source(source, &config).unwrap().output, expected);
+    }
+
+    #[test]
+    fn normalization_preserves_trailing_comments() {
+        let source = "fn first() {} // Keep this comment.\n\n\nfn second() {}\n";
+        let config = Config {
+            rules: crate::config::Rules {
+                normalize_blank_lines: true,
+                ..crate::config::Rules::default()
+            },
+            ..Config::default()
+        };
+
+        let expected = "fn first() {} // Keep this comment.\n\nfn second() {}\n";
+
+        assert_eq!(format_source(source, &config).unwrap().output, expected);
+    }
+
+    #[test]
+    fn normalization_removes_blank_lines_between_comment_and_item() {
+        let source = "fn first() {}\n/// comment\n\nfn otherthing() {}\n";
+        let config = Config {
+            rules: crate::config::Rules {
+                normalize_blank_lines: true,
+                ..crate::config::Rules::default()
+            },
+            ..Config::default()
+        };
+
+        let expected = "fn first() {}\n\n/// comment\nfn otherthing() {}\n";
 
         assert_eq!(format_source(source, &config).unwrap().output, expected);
     }

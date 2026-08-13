@@ -99,6 +99,7 @@ ignore = ["generated/", "src/legacy.rs"]
         let config: Config =
             toml::from_str("[rules]\nmatch_arm_spacing = true\nnormalize_blank_lines = true")
                 .unwrap();
+
         assert!(config.rules.match_arm_spacing);
         assert!(config.rules.normalize_blank_lines);
     }
