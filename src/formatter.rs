@@ -1,6 +1,6 @@
 use crate::edit::{Edit, apply_edits};
+use crate::errors::BoxError;
 use crate::{rules, syntax};
-use anyhow::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormatResult {
@@ -9,7 +9,7 @@ pub struct FormatResult {
     pub edits: Vec<Edit>,
 }
 
-pub fn format_source(source: &str) -> Result<FormatResult> {
+pub fn format_source(source: &str) -> Result<FormatResult, BoxError> {
     let boundaries = syntax::collect_boundaries(source)?;
     let edits = rules::edits_for_boundaries(source, &boundaries);
 

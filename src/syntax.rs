@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use crate::errors::ParseError;
 use ra_ap_syntax::{
     AstNode, Edition, SyntaxNode, TextRange,
     ast::{self, HasAttrs},
@@ -44,18 +44,17 @@ struct Collector<'a> {
     boundaries: Vec<Boundary>,
 }
 
-pub fn collect_boundaries(source: &str) -> Result<Vec<Boundary>> {
+pub fn collect_boundaries(source: &str) -> Result<Vec<Boundary>, ParseError> {
     let parse = ast::SourceFile::parse(source, Edition::CURRENT);
     let errors = parse.errors();
 
     if !errors.is_empty() {
-        return Err(anyhow!(
-            "{}",
+        return Err(ParseError::new(
             errors
                 .into_iter()
                 .map(|error| error.to_string())
                 .collect::<Vec<_>>()
-                .join("\n")
+                .join("\n"),
         ));
     }
 

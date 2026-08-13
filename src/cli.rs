@@ -1,5 +1,5 @@
+use crate::errors::{BoxError, CliError, FileError, WalkError, missing_path};
 use crate::format_source;
-use anyhow::{Context, Result, bail};
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ pub struct Cli {
     check: bool,
 }
 
-pub fn run() -> Result<()> {
+pub fn run() -> Result<(), BoxError> {
     // Cargo invokes subcommands as:
     //
     //     cargo spaced ...
@@ -47,8 +47,8 @@ pub fn run() -> Result<()> {
     let mut needs_formatting = false;
 
     for path in rust_files(&paths)? {
-        let source = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
+        let source =
+            fs::read_to_string(&path).map_err(|error| FileError::new("read", &path, error))?;
 
         let result = format_source(&source)?;
 
@@ -62,20 +62,20 @@ pub fn run() -> Result<()> {
             eprintln!("would format {}", path.display());
         } else {
             fs::write(&path, result.output)
-                .with_context(|| format!("failed to write {}", path.display()))?;
+                .map_err(|error| FileError::new("write", &path, error))?;
             eprintln!("formatted {}", path.display());
         }
     }
 
     if cli.check && needs_formatting {
-        anyhow::bail!("formatting required");
+        return Err(CliError::new("formatting required").into());
     }
 
     Ok(())
 }
 
 impl Cli {
-    fn parse_from<I>(args: I) -> Result<Self>
+    fn parse_from<I>(args: I) -> Result<Self, CliError>
     where
         I: IntoIterator<Item = OsString>,
     {
@@ -95,7 +95,10 @@ impl Cli {
             }
 
             if options_allowed && arg.to_str().is_some_and(|arg| arg.starts_with('-')) {
-                bail!("unexpected argument: {}", arg.to_string_lossy());
+                return Err(CliError::new(format!(
+                    "unexpected argument: {}",
+                    arg.to_string_lossy()
+                )));
             }
 
             paths.push(PathBuf::from(arg));
@@ -114,7 +117,7 @@ Options:\n    --check       Check formatting without modifying files\n    -h, --
     );
 }
 
-fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, BoxError> {
     let mut files = Vec::new();
 
     for path in paths {
@@ -126,15 +129,14 @@ fn rust_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
         }
 
         if !path.exists() {
-            anyhow::bail!("path does not exist: {}", path.display());
+            return Err(missing_path(path).into());
         }
 
         for entry in WalkDir::new(path)
             .into_iter()
             .filter_entry(|entry| !should_skip(entry.path()))
         {
-            let entry =
-                entry.with_context(|| format!("failed while walking {}", path.display()))?;
+            let entry = entry.map_err(|error| WalkError::new(path, error))?;
 
             if entry.file_type().is_file() && is_rust_file(entry.path()) {
                 files.push(entry.into_path());

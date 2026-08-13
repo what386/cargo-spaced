@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use crate::errors::EditError;
 use std::ops::Range;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,7 +23,7 @@ impl Edit {
     }
 }
 
-pub fn apply_edits(source: &str, edits: &[Edit]) -> Result<String> {
+pub fn apply_edits(source: &str, edits: &[Edit]) -> Result<String, EditError> {
     if edits.is_empty() {
         return Ok(source.to_owned());
     }
@@ -42,20 +42,25 @@ pub fn apply_edits(source: &str, edits: &[Edit]) -> Result<String> {
     Ok(output)
 }
 
-fn validate_edits(source: &str, edits: &[Edit]) -> Result<()> {
+fn validate_edits(source: &str, edits: &[Edit]) -> Result<(), EditError> {
     let mut previous_end = 0;
 
     for (index, edit) in edits.iter().enumerate() {
         if edit.range.start > edit.range.end || edit.range.end > source.len() {
-            bail!("edit range is outside source bounds: {:?}", edit.range);
+            return Err(EditError::new(format!(
+                "edit range is outside source bounds: {:?}",
+                edit.range
+            )));
         }
 
         if !source.is_char_boundary(edit.range.start) || !source.is_char_boundary(edit.range.end) {
-            bail!("edit range is not on UTF-8 character boundaries");
+            return Err(EditError::new(
+                "edit range is not on UTF-8 character boundaries",
+            ));
         }
 
         if index > 0 && edit.range.start < previous_end {
-            bail!("overlapping edits are not allowed");
+            return Err(EditError::new("overlapping edits are not allowed"));
         }
 
         previous_end = edit.range.end;
