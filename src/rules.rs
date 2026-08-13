@@ -9,7 +9,13 @@ pub fn edits_for_boundaries(source: &str, boundaries: &[Boundary]) -> Vec<Edit> 
 }
 
 fn edit_for_boundary(source: &str, boundary: &Boundary) -> Option<Edit> {
-    if boundary.previous.skipped || boundary.next.skipped {
+    // A boundary adjacent to a skipped node is still outside that node and
+    // may need spacing. Boundaries wholly inside skipped syntax have both
+    // sibling nodes marked as skipped and must remain untouched.
+    if boundary.previous.skipped && boundary.next.skipped
+        || boundary.parent_kind == ContainerKind::StatementList
+            && (boundary.previous.skipped || boundary.next.skipped)
+    {
         return None;
     }
     let required = required_blank_lines(boundary);

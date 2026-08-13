@@ -343,9 +343,20 @@ fn range_multiline(source: &str, range: &Range<usize>) -> bool {
 }
 
 fn leading_range(source: &str, start: usize, starts: &[usize]) -> Range<usize> {
-    let line = starts
+    let mut line = starts
         .partition_point(|&offset| offset <= start)
         .saturating_sub(1);
+
+    // ra_ap_syntax may attach a trailing comment to the following item's CST
+    // range. If the range starts after code on the current line, begin trivia
+    // attachment after that line so the comment remains attached to the
+    // preceding node instead of swallowing the boundary before the next item.
+    if source[starts[line]..start]
+        .trim()
+        .contains(|character: char| !character.is_whitespace())
+    {
+        line += 1;
+    }
 
     let mut first = line;
 
@@ -364,7 +375,8 @@ fn leading_range(source: &str, start: usize, starts: &[usize]) -> Range<usize> {
         }
     }
 
-    starts[first]..start
+    let logical_start = starts.get(first).copied().unwrap_or(start);
+    logical_start..start.max(logical_start)
 }
 
 fn trailing_range(source: &str, end: usize) -> Range<usize> {

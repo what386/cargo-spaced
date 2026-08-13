@@ -77,7 +77,7 @@ mod tests {
         assert_eq!(format(source), expected);
 
         let source = "#[rustfmt::skip]\nfn skipped() {}\nfn next() {}\nfn main() {\n    #[rustfmt::skip]\n    let value = thing\n        .foo();\n    consume(value);\n}\n";
-        let expected = "#[rustfmt::skip]\nfn skipped() {}\nfn next() {}\n\nfn main() {\n    #[rustfmt::skip]\n    let value = thing\n        .foo();\n    consume(value);\n}\n";
+        let expected = "#[rustfmt::skip]\nfn skipped() {}\n\nfn next() {}\n\nfn main() {\n    #[rustfmt::skip]\n    let value = thing\n        .foo();\n    consume(value);\n}\n";
         assert_eq!(format(source), expected);
 
         let source = "fn main() {\n    #[rustfmt::skip]\n    if condition {\n        let value = thing\n            .foo();\n        consume(value);\n    }\n    finish();\n}\n";
