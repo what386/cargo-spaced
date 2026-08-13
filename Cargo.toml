@@ -16,4 +16,6 @@ exclude = [
 
 [dependencies]
 ra_ap_syntax = "0.0.347"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.9"
 walkdir = "2.5"
