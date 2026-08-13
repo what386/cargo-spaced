@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::edit::{Edit, apply_edits};
 use crate::errors::BoxError;
 use crate::{rules, syntax};
@@ -9,9 +10,9 @@ pub struct FormatResult {
     pub edits: Vec<Edit>,
 }
 
-pub fn format_source(source: &str) -> Result<FormatResult, BoxError> {
+pub fn format_source(source: &str, config: &Config) -> Result<FormatResult, BoxError> {
     let boundaries = syntax::collect_boundaries(source)?;
-    let edits = rules::edits_for_boundaries(source, &boundaries);
+    let edits = rules::edits_for_boundaries(source, &boundaries, config);
 
     let output = apply_edits(source, &edits)?;
     let changed = output != source;
@@ -26,19 +27,10 @@ pub fn format_source(source: &str) -> Result<FormatResult, BoxError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn formatting_is_idempotent() {
-        let source = "fn main() {}\n";
-
-        let once = format_source(source).unwrap();
-        let twice = format_source(&once.output).unwrap();
-
-        assert_eq!(once.output, twice.output);
-    }
+    use crate::config::Config;
 
     fn format(source: &str) -> String {
-        format_source(source).unwrap().output
+        format_source(source, &Config::default()).unwrap().output
     }
 
     #[test]
@@ -95,5 +87,36 @@ mod tests {
         let source = "fn main() {\n    let Some(value) = value else {\n        return;\n    };\n    consume(value);\n}\n";
         let expected = "fn main() {\n    let Some(value) = value else {\n        return;\n    };\n\n    consume(value);\n}\n";
         assert_eq!(format(source), expected);
+    }
+
+    #[test]
+    fn separates_multiline_declarations() {
+        let source = "const VALUE: usize = calculate(\n    first,\n    second,\n);\nstatic CONFIG: Config = Config {\n    enabled: true,\n};\ntype ResultType = std::result::Result<\n    Value,\n    Error,\n>;\nfn consume() {}\n";
+        let expected = "const VALUE: usize = calculate(\n    first,\n    second,\n);\n\nstatic CONFIG: Config = Config {\n    enabled: true,\n};\n\ntype ResultType = std::result::Result<\n    Value,\n    Error,\n>;\n\nfn consume() {}\n";
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
+    fn separates_multiline_macro_statements_without_touching_bodies() {
+        let source = "fn main() {\n    println!(\n        \"value: {}\",\n        value,\n    );\n    some_macro! {\n        first();\n        second();\n    }\n    finish();\n}\n";
+        let expected = "fn main() {\n    println!(\n        \"value: {}\",\n        value,\n    );\n\n    some_macro! {\n        first();\n        second();\n    }\n\n    finish();\n}\n";
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
+    fn match_arm_spacing_is_opt_in_and_only_affects_multiline_arms() {
+        let source = "fn main(value: Value) {\n    match value {\n        Value::A => {\n            first();\n        }\n        Value::B => second(),\n        Value::C => {\n            third();\n        }\n    }\n}\n";
+        assert_eq!(format(source), source);
+
+        let config = Config {
+            match_arm_spacing: true,
+            ..Config::default()
+        };
+
+        let expected = "fn main(value: Value) {\n    match value {\n        Value::A => {\n            first();\n        }\n\n        Value::B => second(),\n\n        Value::C => {\n            third();\n        }\n    }\n}\n";
+        assert_eq!(
+            format_source(source, &config).unwrap().output,
+            expected
+        );
     }
 }

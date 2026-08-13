@@ -7,8 +7,9 @@ use std::ops::Range;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContainerKind {
-    ItemList,
-    StatementList,
+    Items,
+    Statements,
+    MatchArms,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +17,9 @@ pub enum NodeKind {
     BlockBodiedItem,
     LetStatement,
     BlockExpressionStatement,
+    MultilineDeclaration,
+    MultilineMacroStatement,
+    MatchArm,
     Other,
 }
 
@@ -100,8 +104,13 @@ impl<'a> Collector<'a> {
                 continue;
             }
 
-            if let Some(list) = ast::StmtList::cast(syntax) {
+            if let Some(list) = ast::StmtList::cast(syntax.clone()) {
                 self.statements(&list);
+                continue;
+            }
+
+            if let Some(list) = ast::MatchArmList::cast(syntax) {
+                self.match_arms(&list);
             }
         }
     }
@@ -113,7 +122,7 @@ impl<'a> Collector<'a> {
             .map(|item| self.item_node(&item))
             .collect();
 
-        self.add_boundaries(ContainerKind::ItemList, nodes);
+        self.add_boundaries(ContainerKind::Items, nodes);
     }
 
     fn associated_items(&mut self, parent: &SyntaxNode) {
@@ -123,7 +132,7 @@ impl<'a> Collector<'a> {
             .map(|item| self.associated_item_node(&item))
             .collect();
 
-        self.add_boundaries(ContainerKind::ItemList, nodes);
+        self.add_boundaries(ContainerKind::Items, nodes);
     }
 
     fn extern_items(&mut self, parent: &SyntaxNode) {
@@ -133,7 +142,7 @@ impl<'a> Collector<'a> {
             .map(|item| self.extern_item_node(&item))
             .collect();
 
-        self.add_boundaries(ContainerKind::ItemList, nodes);
+        self.add_boundaries(ContainerKind::Items, nodes);
     }
 
     fn statements(&mut self, list: &ast::StmtList) {
@@ -149,7 +158,22 @@ impl<'a> Collector<'a> {
             }
         }
 
-        self.add_boundaries(ContainerKind::StatementList, nodes);
+        self.add_boundaries(ContainerKind::Statements, nodes);
+    }
+
+    fn match_arms(&mut self, list: &ast::MatchArmList) {
+        let nodes = list
+            .arms()
+            .map(|arm| {
+                self.node_info(
+                    arm.syntax(),
+                    NodeKind::MatchArm,
+                    syntax_is_skipped(arm.syntax()),
+                )
+            })
+            .collect();
+
+        self.add_boundaries(ContainerKind::MatchArms, nodes);
     }
 
     fn add_boundaries(&mut self, parent_kind: ContainerKind, nodes: Vec<NodeInfo>) {
@@ -178,15 +202,16 @@ impl<'a> Collector<'a> {
     }
 
     fn item_node(&self, item: &ast::Item) -> NodeInfo {
-        self.node_info(
-            item.syntax(),
-            if item_is_block_bodied(item) {
-                NodeKind::BlockBodiedItem
-            } else {
-                NodeKind::Other
-            },
-            syntax_is_skipped(item.syntax()),
-        )
+        let syntax = item.syntax();
+        let kind = if is_multiline_declaration(syntax) {
+            NodeKind::MultilineDeclaration
+        } else if item_is_block_bodied(item) {
+            NodeKind::BlockBodiedItem
+        } else {
+            NodeKind::Other
+        };
+
+        self.node_info(syntax, kind, syntax_is_skipped(syntax))
     }
 
     fn associated_item_node(&self, item: &ast::AssocItem) -> NodeInfo {
@@ -229,6 +254,10 @@ impl<'a> Collector<'a> {
 
                 let kind = if expression_is_block_like(&expression) {
                     NodeKind::BlockExpressionStatement
+                } else if expression_is_macro(&expression)
+                    && range_multiline(self.source, &byte_range(expression.syntax().text_range()))
+                {
+                    NodeKind::MultilineMacroStatement
                 } else {
                     NodeKind::Other
                 };
@@ -291,6 +320,21 @@ fn expression_is_block_like(expression: &ast::Expr) -> bool {
         || ast::WhileExpr::can_cast(kind)
         || ast::LoopExpr::can_cast(kind)
         || ast::BlockExpr::can_cast(kind)
+}
+
+fn expression_is_macro(expression: &ast::Expr) -> bool {
+    ast::MacroExpr::can_cast(expression.syntax().kind())
+}
+
+fn is_multiline_declaration(syntax: &SyntaxNode) -> bool {
+    (ast::Const::can_cast(syntax.kind())
+        || ast::Static::can_cast(syntax.kind())
+        || ast::TypeAlias::can_cast(syntax.kind()))
+        && range_multiline_from_syntax(syntax)
+}
+
+fn range_multiline_from_syntax(syntax: &SyntaxNode) -> bool {
+    syntax.text().contains_char('\n')
 }
 
 fn ends_with_brace(syntax: &SyntaxNode) -> bool {

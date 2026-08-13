@@ -1,3 +1,4 @@
+use cargo_spaced::config::Config;
 use cargo_spaced::format_source;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,7 +26,7 @@ fn formatting_fixtures() {
         let input = fs::read_to_string(&input_path).unwrap();
         let expected = fs::read_to_string(&expected_path).unwrap();
 
-        let once = format_source(&input).unwrap();
+        let once = format_source(&input, &Config::default()).unwrap();
         assert_eq!(
             once.output,
             expected,
@@ -33,7 +34,7 @@ fn formatting_fixtures() {
             file_name.to_string_lossy()
         );
 
-        let twice = format_source(&once.output).unwrap();
+        let twice = format_source(&once.output, &Config::default()).unwrap();
         assert_eq!(
             twice.output,
             expected,

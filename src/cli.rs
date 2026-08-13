@@ -45,7 +45,7 @@ pub fn run() -> Result<(), BoxError> {
     let (config, project_root) =
         Config::load(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))?;
 
-    let mut ignores = config.ignore;
+    let mut ignores = config.ignore.clone();
     ignores.extend(cli.ignores);
     let paths = if cli.paths.is_empty() {
         vec![PathBuf::from(".")]
@@ -59,7 +59,7 @@ pub fn run() -> Result<(), BoxError> {
         let source =
             fs::read_to_string(&path).map_err(|error| FileError::new("read", &path, error))?;
 
-        let result = format_source(&source)?;
+        let result = format_source(&source, &config)?;
 
         if !result.changed {
             if !cli.quiet {

@@ -10,6 +10,8 @@ const CONFIG_FILE: &str = "cargo-spaced.toml";
 pub struct Config {
     #[serde(default)]
     pub ignore: Vec<PathBuf>,
+    #[serde(default)]
+    pub match_arm_spacing: bool,
 }
 
 impl Config {
@@ -72,11 +74,19 @@ ignore = ["generated/", "src/legacy.rs"]
             config.ignore,
             vec![PathBuf::from("generated/"), PathBuf::from("src/legacy.rs")]
         );
+
+        assert!(!config.match_arm_spacing);
     }
 
     #[test]
     fn rejects_unknown_fields() {
         let result = toml::from_str::<Config>("ignored = [\"target\"]");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserializes_match_arm_spacing() {
+        let config: Config = toml::from_str("match_arm_spacing = true").unwrap();
+        assert!(config.match_arm_spacing);
     }
 }
