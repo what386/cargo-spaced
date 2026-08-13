@@ -15,6 +15,9 @@
 - [ ] rule: comment blocks
       @created 2026-08-13 20:35
 
+- [ ] rule: file boundaries
+      @created 2026-08-13 20:36
+
 
 ## Completed
 
