@@ -1,6 +1,13 @@
 # Changelog — Untitled
 
-*Generated on 2026-08-13*
+*Generated on 2026-08-14*
+
+## 0.3.0 — 2026-08-14
+
+### Changes
+
+- cli: make more similar to rustfmt
+
 
 ## 0.2.1 — 2026-08-13
 
