@@ -1,9 +1,11 @@
 use crate::config::Config;
 use crate::errors::{BoxError, CliError, FileError, WalkError, missing_path};
 use crate::format_source;
+use crate::output;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use walkdir::WalkDir;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -13,9 +15,10 @@ pub struct Cli {
     check: bool,
     quiet: bool,
     verbose: bool,
+    files_with_diff: bool,
 }
 
-pub fn run() -> Result<(), BoxError> {
+pub fn run() -> Result<ExitCode, BoxError> {
     // Cargo invokes subcommands as:
     //
     //     cargo spaced ...
@@ -32,13 +35,13 @@ pub fn run() -> Result<(), BoxError> {
     }
 
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        print_help();
-        return Ok(());
+        output::print_help();
+        return Ok(ExitCode::SUCCESS);
     }
 
     if args.iter().any(|arg| arg == "--version" || arg == "-V") {
-        println!("cargo-spaced {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
+        output::print_version();
+        return Ok(ExitCode::SUCCESS);
     }
 
     let cli = Cli::parse_from(args)?;
@@ -56,60 +59,37 @@ pub fn run() -> Result<(), BoxError> {
     let mut needs_formatting = false;
 
     for path in rust_files(&paths, &project_root, &ignores)? {
+        if cli.verbose && !cli.quiet {
+            output::print_progress(&path);
+        }
+
         let source =
             fs::read_to_string(&path).map_err(|error| FileError::new("read", &path, error))?;
 
         let result = format_source(&source, &config)?;
 
         if !result.changed {
-            if !cli.quiet {
-                if cli.verbose {
-                    eprintln!("checked {}: unchanged", path.display());
-                } else {
-                    eprintln!("checked {}", path.display());
-                }
-            }
-
             continue;
         }
 
         needs_formatting = true;
-        let summary = (cli.verbose && !cli.quiet).then(|| change_summary(&source, &result));
 
         if cli.check {
-            if !cli.quiet {
-                if cli.verbose {
-                    eprintln!(
-                        "would format {}: {}",
-                        path.display(),
-                        summary.as_deref().unwrap()
-                    );
-                } else {
-                    eprintln!("would format {}", path.display());
-                }
-            }
+            output::print_result(&path, &source, &result.output, cli.files_with_diff);
         } else {
             fs::write(&path, result.output)
                 .map_err(|error| FileError::new("write", &path, error))?;
-            if !cli.quiet {
-                if cli.verbose {
-                    eprintln!(
-                        "formatted {}: {}",
-                        path.display(),
-                        summary.as_deref().unwrap()
-                    );
-                } else {
-                    eprintln!("formatted {}", path.display());
-                }
+            if cli.files_with_diff {
+                output::print_path(&path);
             }
         }
     }
 
-    if cli.check && needs_formatting {
-        return Err(CliError::new("formatting required").into());
-    }
-
-    Ok(())
+    Ok(if cli.check && needs_formatting {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 impl Cli {
@@ -122,6 +102,7 @@ impl Cli {
         let mut check = false;
         let mut quiet = false;
         let mut verbose = false;
+        let mut files_with_diff = false;
         let mut options_allowed = true;
 
         let mut args = args.into_iter().skip(1);
@@ -144,6 +125,11 @@ impl Cli {
 
             if options_allowed && arg == "--verbose" {
                 verbose = true;
+                continue;
+            }
+
+            if options_allowed && (arg == "--files-with-diff" || arg == "-l") {
+                files_with_diff = true;
                 continue;
             }
 
@@ -172,17 +158,9 @@ impl Cli {
             check,
             quiet,
             verbose,
+            files_with_diff,
         })
     }
-}
-
-fn print_help() {
-    println!(
-        "cargo-spaced - Insert deterministic blank lines into Rust source code\n\n\
-Usage: cargo spaced [OPTIONS] [PATH]...\n\n\
-If no paths are supplied, the current directory is scanned recursively.\n\n\
-Options:\n    --check       Check formatting without modifying files\n    -q, --quiet   Suppress informational output\n    --verbose     Report every processed Rust file\n    --ignore PATH Ignore a file or directory\n    -h, --help    Print this help message\n    -V, --version Print version information"
-    );
 }
 
 fn rust_files(
@@ -245,34 +223,6 @@ fn is_ignored(path: &Path, project_root: &Path, ignores: &[PathBuf]) -> bool {
     })
 }
 
-fn change_summary(source: &str, result: &crate::FormatResult) -> String {
-    let lines = result
-        .edits
-        .iter()
-        .map(|edit| {
-            source[..edit.range.start]
-                .bytes()
-                .filter(|&byte| byte == b'\n')
-                .count()
-                + 1
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-
-    let line_list = lines
-        .iter()
-        .map(usize::to_string)
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let change_word = if result.edits.len() == 1 {
-        "change"
-    } else {
-        "changes"
-    };
-
-    format!("{} {change_word} on lines {line_list}", result.edits.len())
-}
-
 fn is_rust_file(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension == "rs")
 }
@@ -315,6 +265,7 @@ mod tests {
                 check: true,
                 quiet: false,
                 verbose: false,
+                files_with_diff: false,
             }
         );
     }
@@ -356,29 +307,14 @@ mod tests {
     }
 
     #[test]
-    fn parses_quiet_and_verbose_options() {
-        let args = ["cargo-spaced", "-q", "--verbose"]
+    fn parses_output_options() {
+        let args = ["cargo-spaced", "-q", "--verbose", "-l"]
             .into_iter()
             .map(OsString::from);
 
         let cli = Cli::parse_from(args).unwrap();
         assert!(cli.quiet);
         assert!(cli.verbose);
-    }
-
-    #[test]
-    fn summarizes_changes_using_original_source_lines() {
-        let source = "first\nsecond\nthird\n";
-        let result = crate::FormatResult {
-            output: String::new(),
-            changed: true,
-            edits: vec![
-                crate::edit::Edit::insert(6, "\n"),
-                crate::edit::Edit::insert(6, "\n"),
-                crate::edit::Edit::insert(13, "\n"),
-            ],
-        };
-
-        assert_eq!(change_summary(source, &result), "3 changes on lines 2, 3");
+        assert!(cli.files_with_diff);
     }
 }
