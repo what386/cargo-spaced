@@ -6,9 +6,11 @@ default:
 fmt:
     cargo clippy --fix --bin "cargo-spaced"
     cargo fmt --all
+    cargo spaced
 
 lint:
     cargo fmt -- --check
+    cargo spaced --check
     cargo clippy --all-targets -- -D warnings
 
 test:
