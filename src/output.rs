@@ -67,6 +67,7 @@ fn diff_text(path: &Path, source: &str, formatted: &str) -> String {
         .enumerate()
         .filter_map(|(index, line)| (line.kind != ' ').then_some(index))
         .collect::<Vec<_>>();
+
     let mut output = String::new();
     let mut group_start = 0;
 

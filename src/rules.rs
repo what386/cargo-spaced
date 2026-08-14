@@ -141,6 +141,7 @@ fn normalize_boundary(source: &str, boundary: &Boundary, required: usize) -> Opt
         .bytes()
         .take_while(|byte| matches!(byte, b' ' | b'\t'))
         .count();
+
     let indentation = &source[indentation_start..indentation_start + indentation_length];
 
     Some(Edit::replace(
@@ -163,6 +164,7 @@ fn normalize_comment_trivia(source: &str, start: usize, end: usize) -> Option<Ed
         let line_end = source[line_start..end]
             .find('\n')
             .map_or(end, |offset| line_start + offset);
+
         let next_line_start = (line_end < end).then_some(line_end + 1);
         let line = &source[line_start..next_line_start.unwrap_or(line_end)];
         let content = line.trim_end_matches(['\r', '\n']);
@@ -172,6 +174,7 @@ fn normalize_comment_trivia(source: &str, start: usize, end: usize) -> Option<Ed
             if saw_attached_trivia {
                 first_blank_start.get_or_insert(line_start);
             }
+
             line_start = next_line_start.unwrap_or(line_end);
             continue;
         }
@@ -264,6 +267,7 @@ fn rule_module_boundary(boundary: &Boundary) -> usize {
         boundary.previous.kind,
         NodeKind::OutOfLineModule | NodeKind::InlineModule
     );
+
     let next_is_module = matches!(
         boundary.next.kind,
         NodeKind::OutOfLineModule | NodeKind::InlineModule

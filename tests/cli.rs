@@ -8,6 +8,7 @@ fn temp_file() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
+
     std::env::temp_dir().join(format!(
         "cargo-spaced-cli-{}-{nonce}.rs",
         std::process::id()
@@ -34,6 +35,7 @@ fn check_prints_a_diff_and_returns_failure_without_modifying_the_file() {
         String::from_utf8_lossy(&output.stdout)
             .starts_with(&format!("Diff in {}:", path.display()))
     );
+
     assert!(output.stderr.is_empty());
     assert_eq!(fs::read_to_string(&path).unwrap(), source);
     fs::remove_file(path).unwrap();
@@ -56,6 +58,7 @@ fn files_with_diff_prints_only_changed_paths() {
         String::from_utf8(output.stdout).unwrap(),
         format!("{}\n", path.display())
     );
+
     assert!(output.stderr.is_empty());
     fs::remove_file(path).unwrap();
 }
@@ -74,6 +77,7 @@ fn normal_runs_are_silent_and_format_the_file() {
         fs::read_to_string(&path).unwrap(),
         "fn first() {}\n\nfn second() {}\n"
     );
+
     fs::remove_file(path).unwrap();
 }
 
@@ -89,6 +93,7 @@ fn verbose_reports_each_file_on_stdout() {
         String::from_utf8(output.stdout).unwrap(),
         format!("Formatting {}\n", path.display())
     );
+
     assert!(output.stderr.is_empty());
     fs::remove_file(path).unwrap();
 }
