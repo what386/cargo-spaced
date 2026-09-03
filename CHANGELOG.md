@@ -1,6 +1,13 @@
 # Changelog — Untitled
 
-*Generated on 2026-08-14*
+*Generated on 2026-09-03*
+
+## 0.4.0 — 2026-09-03
+
+### Changes
+
+- make 'file' cfg directives count as blocks that need spacing, e.g `#![cfg(target_os)]`
+
 
 ## 0.3.0 — 2026-08-14
 
