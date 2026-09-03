@@ -42,6 +42,24 @@ mod tests {
     }
 
     #[test]
+    fn separates_file_cfg_directives_from_code() {
+        let source = "#![cfg(target_os)]\n#![allow(dead_code)]\nfn main() {}\n";
+        let expected = "#![cfg(target_os)]\n#![allow(dead_code)]\n\nfn main() {}\n";
+
+        assert_eq!(format(source), expected);
+
+        let source = "#![cfg(target_os)]\n\n#![allow(dead_code)]\nfn main() {}\n";
+        assert_eq!(format(source), expected);
+
+        let source = "#![allow(dead_code)]\nfn main() {}\n";
+        assert_eq!(format(source), source);
+
+        let source = "#![cfg_attr(unix, allow(dead_code))]\n#[inline]\nfn main() {}\n";
+        let expected = "#![cfg_attr(unix, allow(dead_code))]\n\n#[inline]\nfn main() {}\n";
+        assert_eq!(format(source), expected);
+    }
+
+    #[test]
     fn separates_multiline_lets_and_block_statements() {
         let source = "fn main() {\n    let value = thing\n        .foo();\n    if value {\n        consume(value);\n    }\n    finish();\n}\n";
         let expected = "fn main() {\n    let value = thing\n        .foo();\n\n    if value {\n        consume(value);\n    }\n\n    finish();\n}\n";

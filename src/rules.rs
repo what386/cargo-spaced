@@ -30,7 +30,9 @@ pub fn edits_for_file_boundaries(source: &str, config: &Config) -> Vec<Edit> {
         edits.push(Edit::replace(0..first_content, ""));
     }
 
-    if let Some(edit) = normalize_comment_trivia(source, first_content, source.len()) {
+    if source.lines().any(is_file_cfg_directive_line) {
+        edits.extend(edits_for_file_cfg_trivia(source, first_content));
+    } else if let Some(edit) = normalize_comment_trivia(source, first_content, source.len()) {
         edits.push(edit);
     }
 
@@ -88,6 +90,7 @@ fn edit_for_boundary(source: &str, boundary: &Boundary, config: &Config) -> Vec<
     }
 
     if config.rules.normalize_blank_lines
+        && boundary.previous.kind != NodeKind::FileCfgDirective
         && let Some(edit) = normalize_comment_trivia(
             source,
             source[..boundary.next.range.start]
@@ -195,6 +198,43 @@ fn normalize_comment_trivia(source: &str, start: usize, end: usize) -> Option<Ed
     None
 }
 
+fn edits_for_file_cfg_trivia(source: &str, start: usize) -> Vec<Edit> {
+    let mut edits = Vec::new();
+    let mut saw_file_attribute = false;
+    let mut blank_start = None;
+    let mut line_start = start;
+
+    while line_start < source.len() {
+        let line_end = source[line_start..]
+            .find('\n')
+            .map_or(source.len(), |offset| line_start + offset + 1);
+        let trimmed = source[line_start..line_end].trim();
+
+        if trimmed.starts_with("#![") {
+            if let Some(blank_start) = blank_start.take() {
+                edits.push(Edit::replace(blank_start..line_start, ""));
+            }
+            saw_file_attribute = true;
+        } else if trimmed.is_empty() && saw_file_attribute {
+            blank_start.get_or_insert(line_start);
+        } else if !trimmed.starts_with("//") {
+            break;
+        }
+
+        line_start = line_end;
+    }
+
+    edits
+}
+
+fn is_file_cfg_directive_line(line: &str) -> bool {
+    let Some(meta) = line.strip_prefix("#![") else {
+        return false;
+    };
+
+    meta.starts_with("cfg(") || meta.starts_with("cfg_attr(")
+}
+
 fn remove_blank_lines(text: &str) -> Option<String> {
     let mut changed = false;
     let mut replacement = String::with_capacity(text.len());
@@ -223,12 +263,25 @@ fn required_blank_lines(boundary: &Boundary, config: &Config) -> usize {
         rule_multiline_block_statement(boundary),
         rule_multiline_declaration(boundary),
         rule_multiline_macro_statement(boundary),
+        rule_file_cfg_directive(boundary),
         rule_match_arm_boundary(boundary, config),
         rule_module_boundary(boundary),
     ]
     .into_iter()
     .max()
     .unwrap_or(0)
+}
+
+/// Require a blank line after a contiguous root-level inner-attribute group
+/// containing a `cfg` or `cfg_attr` directive.
+fn rule_file_cfg_directive(boundary: &Boundary) -> usize {
+    if boundary.parent_kind == ContainerKind::Items
+        && boundary.previous.kind == NodeKind::FileCfgDirective
+    {
+        1
+    } else {
+        0
+    }
 }
 
 fn rule_multiline_declaration(boundary: &Boundary) -> usize {

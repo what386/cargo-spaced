@@ -15,6 +15,7 @@ pub enum ContainerKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeKind {
     BlockBodiedItem,
+    FileCfgDirective,
     LetStatement,
     BlockExpressionStatement,
     MultilineDeclaration,
@@ -87,6 +88,7 @@ impl<'a> Collector<'a> {
     fn collect(&mut self, file: &ast::SourceFile) {
         // SourceFile itself is the container for crate-root items.
         self.module_items(file.syntax());
+        self.file_cfg_boundary(file);
 
         // Every nested syntactic container can be found directly in the CST.
         // There is no need to recursively enumerate every expression kind.
@@ -115,6 +117,46 @@ impl<'a> Collector<'a> {
                 self.match_arms(&list);
             }
         }
+    }
+
+    fn file_cfg_boundary(&mut self, file: &ast::SourceFile) {
+        let inner_attrs = file
+            .syntax()
+            .children()
+            .filter_map(ast::Attr::cast)
+            .filter(|attr| attr.kind().is_inner())
+            .collect::<Vec<_>>();
+
+        let Some(last_attr) = inner_attrs.last() else {
+            return;
+        };
+
+        if !inner_attrs.iter().any(is_file_cfg_directive) {
+            return;
+        }
+
+        let Some(first_item) = file
+            .syntax()
+            .children()
+            .find_map(|syntax| ast::Item::cast(syntax).map(|item| self.item_node(&item)))
+        else {
+            return;
+        };
+
+        let previous = self.node_info(
+            last_attr.syntax(),
+            NodeKind::FileCfgDirective,
+            syntax_is_skipped(last_attr.syntax()),
+        );
+        let insertion_offset = source_line_after(self.source, previous.trailing_range.end);
+
+        self.boundaries.push(Boundary {
+            parent_kind: ContainerKind::Items,
+            range: previous.trailing_range.end..first_item.leading_range.end,
+            insertion_offset,
+            previous,
+            next: first_item,
+        });
     }
 
     fn module_items(&mut self, parent: &SyntaxNode) {
@@ -341,6 +383,10 @@ fn is_multiline_declaration(syntax: &SyntaxNode) -> bool {
         && range_multiline_from_syntax(syntax)
 }
 
+fn is_file_cfg_directive(attr: &ast::Attr) -> bool {
+    matches!(attr.simple_name().as_deref(), Some("cfg" | "cfg_attr"))
+}
+
 fn range_multiline_from_syntax(syntax: &SyntaxNode) -> bool {
     syntax.text().contains_char('\n')
 }
@@ -451,4 +497,10 @@ fn insertion_offset(_source: &str, next_start: usize, starts: &[usize]) -> usize
         .saturating_sub(1);
 
     starts[line]
+}
+
+fn source_line_after(source: &str, offset: usize) -> usize {
+    source[offset..]
+        .find('\n')
+        .map_or(offset, |relative| offset + relative + 1)
 }
