@@ -148,6 +148,7 @@ impl<'a> Collector<'a> {
             NodeKind::FileCfgDirective,
             syntax_is_skipped(last_attr.syntax()),
         );
+
         let insertion_offset = source_line_after(self.source, previous.trailing_range.end);
 
         self.boundaries.push(Boundary {

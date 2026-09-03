@@ -208,12 +208,14 @@ fn edits_for_file_cfg_trivia(source: &str, start: usize) -> Vec<Edit> {
         let line_end = source[line_start..]
             .find('\n')
             .map_or(source.len(), |offset| line_start + offset + 1);
+
         let trimmed = source[line_start..line_end].trim();
 
         if trimmed.starts_with("#![") {
             if let Some(blank_start) = blank_start.take() {
                 edits.push(Edit::replace(blank_start..line_start, ""));
             }
+
             saw_file_attribute = true;
         } else if trimmed.is_empty() && saw_file_attribute {
             blank_start.get_or_insert(line_start);
